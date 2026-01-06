@@ -1,6 +1,6 @@
--- 2025-12-25
+-- 2026-01-06
 
-{- | The program Creates copy of a RINEX 3.04 file, replacing the letter
+{- | The program creates copy of a RINEX 3.04 file, replacing the letter
      'D' with 'e' in the data section so that scientific notation uses
      'e' instead of Fortran-style 'D'. The header remains unchanged.
 
@@ -30,46 +30,60 @@ main = do
       dn = "destination.nav"                                -- Input: destination file name
 
   printf "Start processing\n"
-  convert sn dn
+  bs <- L8.readFile sn
+  let bs' = rnxConvert bs
+  L8.writeFile dn bs'
   printf "Processing complete\n"
            
--- | Convert a RINEX file
-convert
-    :: FilePath                                             -- ^ source file name
-    -> FilePath                                             -- ^ destination file name
-    -> IO ()
-convert sn dn = do
-    bs <- L8.readFile sn
-    let bs' = convertNotation bs
-    L8.writeFile dn bs'
 
--- | Convert scientific notation by:
+-- | Convert scientific notation of RINEX 3.04 file by:
 --   * separating the header (up to the line containing "END OF HEADER"),
 --   * copying the header unchanged,
---   * replacing all 'D' or 'd' with 'E' in the data section,      
-convertNotation :: L8.ByteString -> L8.ByteString                   
-convertNotation bs
-    | L8.null bs          = error "Empty file"
-    | rnxVer /= "3.04"  = error "Not RINEX 3.04 file"
-    | otherwise =  
-        let pieces = L8.split '\n' bs                       -- Only header pieces will be read
-                                                            -- Don't use L8.lines because it works differently
-            hdrLen = headerLength pieces
-            hdr     = L8.take hdrLen bs
-            dataSec = L8.drop hdrLen bs
-        in hdr <> (L8.map replaceD dataSec)
+--   * replacing all 'D' or 'd' with 'E' in the body of file,      
+rnxConvert :: L8.ByteString -> L8.ByteString                   
+rnxConvert bs =
+        let n = rnxHeaderLength bs
+            (hdr, body) = L8.splitAt n bs
+        in hdr <> (L8.map replaceD body)
+
+-- | Count RINEX 3.04 header length.  The header record consists of:
+--   - data field 0-59,
+--   - label field 60-EOL.
+--   It cannot use the RINEX 3.04 specification knowledge that the
+--   width of a line should be 80 characters, because last line
+--   sometimes breaks this rule.
+rnxHeaderLength
+    :: L8.ByteString                              -- ^ rinex content
+    -> Int64                                      -- ^ length of header
+rnxHeaderLength bs0
+    | L8.null bs0          = error
+                                   "Error\n\
+                                   \Empty input."
+    | rnxVer bs0 /= "3.04" = error
+                                   "Error\n\
+                                   \The input file is not 3.04 version 3.04."
+    | otherwise            = count 0 bs0
     where
-       rnxVer = trim $ takeField 0 9 bs
-        
--- | Compute RINEX header length including END OF HEADER line
-headerLength :: [L8.ByteString] -> Int64
-headerLength ls =
-    case break isEndOfHeader ls of
-      (_   , []  )  -> error "Cannot detect rinex header."
-      (part, l1:[]) -> sum (map ((+1) . L8.length) part) +  L8.length l1      -- +1 to count '\n'
-      (part, l1:_)  -> sum (map ((+1) . L8.length) part) + (L8.length l1 + 1) -- +1 to count '\n'
-    where
-      isEndOfHeader line = trim (L8.drop 60 line) == L8.pack "END OF HEADER"
+      rnxVer = trim . takeField  0 9
+
+      count acc bs
+          | L8.null bs = error
+                                   "Error\n\
+                                   \END OF HEADER could not be found.\
+                                   \Empty input."
+          | otherwise =
+              let -- count length of line (length of header record)
+                  bs1         = L8.drop 60 bs
+                  (ss,   bs2) = L8.span isSpace bs1
+                  (bs13, bs3) = L8.splitAt 13 bs2                 -- at length of "END OF HEADER"
+                  (xs,   bs4) = L8.break (`L8.elem` "\n\r") bs3
+                  (eol,  bs') = L8.span  (`L8.elem` "\n\r") bs4
+                  n           = 60 + L8.length ss + 13            -- length of line
+                                + L8.length xs + L8.length eol
+              in case bs13 of
+                   "END OF HEADER" -> acc + n
+                   _               -> count (acc + n) bs'
+
 
 -- | Replace 'D' or 'd' with 'e'.
 --   In RINEX, floating-point numbers may use Fortran-style
