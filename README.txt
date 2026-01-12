@@ -14,8 +14,6 @@ gps_lab02 - GPS satellite position for given GPS time using orbital
 gps_lab03 - GPS satellite position at GPS transmission time for
             dual-frequency pseudorange observation using single
             navigation record
-            
-gps_lab04 - Scientific notation RINEX 3.04 file converter
 
 gps_lab05 - Selection of GPS navigation record from RINEX 3.04
             navigation file for the observation time
@@ -43,8 +41,6 @@ gps_lab02 - Pozycja satelity GPS dla danego czasu GPS z wykorzystaniem
 gps_lab03 - Pozycja satelity GPS w czasie transmisji GPS dla
             dwuczęstotliwościowej obserwacji pseudoodległości z wykorzystaniem
             rekordu nawigacyjnego
-            
-gps_lab04 - Konwerter notacji naukowej pliku RINEX 3.04
 
 gps_lab05 - Wybór rekordu nawigacyjnego GPS z pliku nawigacyjnego
             RINEX 3.04 dla czasu obserwacji
