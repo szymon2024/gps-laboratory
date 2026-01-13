@@ -310,7 +310,7 @@ getDouble bs = do
   (val, rest) <- readDouble bs
   case L8.uncons rest of
     Nothing                 -> Just val
-    Just (b, _) | isSpace b -> Just val
+    _ | L8.all isSpace rest -> Just val
     _                       -> error $ "Cannot read \"" ++ L8.unpack rest
                                ++ "\" from \"" ++ L8.unpack bs ++ "\""
 
