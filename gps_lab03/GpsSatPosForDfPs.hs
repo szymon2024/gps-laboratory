@@ -1,4 +1,4 @@
--- 2026-01-13
+-- 2026-01-14
 
 {- | Estimate ECEF satellite position for dual-frequency pseudorange
      observation (measurement) from single navigation record.  The
@@ -269,6 +269,8 @@ diffGpsWeekTow (w2,tow2) (w1,tow1) =
       dw   = w2   - w1
       dtow = tow2 - tow1
 
+----------------------------------------------------------------------
+
 -- | Substract seconds from (GPS week,tow).
 diffSeconds
     :: GpsWeekTow                                 -- ^ GPS week, time-of-week
@@ -304,7 +306,7 @@ readDouble bs = unsafePerformIO $
 ----------------------------------------------------------------------
 
 -- | Get Double value from ByteString field.
---   Its purpose is to stop reading if it cannot read the entire field.
+--   Its purpose is to stop if the entire field has not been read.
 getDouble :: L8.ByteString -> Maybe Double
 getDouble bs = do
   (val, rest) <- readDouble bs
@@ -373,27 +375,6 @@ readRecord bs =
               
     in (NavRecord {..}, bs8)
        
-----------------------------------------------------------------------
-
-dropLine :: L8.ByteString -> L8.ByteString
-dropLine     =  snd . readEOL . L8.drop 80
-
-----------------------------------------------------------------------
-                      
-dropLastLine :: L8.ByteString -> L8.ByteString
-dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
-
-----------------------------------------------------------------------
-                      
-readEOL :: L8.ByteString -> (L8.ByteString, L8.ByteString)
-readEOL bs =
-    case L8.uncons bs of
-      Just ('\n', rest)  -> ("\n", rest)
-      Just ('\r', rest1) -> case L8.uncons rest1 of
-                              Just ('\n', rest2) -> ("\r\n", rest2)
-                              _                  -> ("\r"  , rest1)
-      _                  -> error "Cannot find end of line."
-
 ----------------------------------------------------------------------
                             
 readLine1Data :: L8.ByteString  -> Maybe ((Int, GpsTime, Double, Double, Double), L8.ByteString)
@@ -466,6 +447,24 @@ readLine8Data :: L8.ByteString  -> Maybe ((Double), L8.ByteString)
 readLine8Data bs = do
   fitIntervalD  <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   return ((fitIntervalD), dropLastLine bs)
+    where
+      dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
+      
+----------------------------------------------------------------------
+
+dropLine :: L8.ByteString -> L8.ByteString
+dropLine     =  snd . readEOL . L8.drop 80
+
+----------------------------------------------------------------------
+                      
+readEOL :: L8.ByteString -> (L8.ByteString, L8.ByteString)
+readEOL bs =
+    case L8.uncons bs of
+      Just ('\n', rest)  -> ("\n", rest)
+      Just ('\r', rest1) -> case L8.uncons rest1 of
+                              Just ('\n', rest2) -> ("\r\n", rest2)
+                              _                  -> ("\r"  , rest1)
+      _                  -> error "Cannot find end of line."
 
 ----------------------------------------------------------------------
 
