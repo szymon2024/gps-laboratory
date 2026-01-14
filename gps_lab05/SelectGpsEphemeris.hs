@@ -85,10 +85,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict                   (Map)
-import qualified Data.Map.Strict    as MS
+import qualified Data.IntMap.Strict as IntMap
 import           Data.IntMap.Strict                (IntMap)
-import qualified Data.IntMap.Strict as IMS
 import           Data.Char                         (isSpace)
 import           Data.Int                          (Int64)
 import qualified Data.ByteString.Lazy.Char8 as L8
@@ -173,10 +173,10 @@ selectGpsEphemeris
     -> NavMap                                     -- ^ map with navigation records
     -> Maybe NavRecord                            -- ^ selected navigation record
 selectGpsEphemeris tobs prn navMap = do
-    subMap <- IMS.lookup prn navMap
+    subMap <- IntMap.lookup prn navMap
     let wtobs  = gpsTimeToWeekTow tobs
-        past   = MS.lookupLE wtobs subMap
-        future = MS.lookupGE wtobs subMap
+        past   = Map.lookupLE wtobs subMap
+        future = Map.lookupGE wtobs subMap
         closest = case (past, future) of
           (Just (wtoeP, rP), Just (wtoeF, rF)) ->
               if abs (diffGpsWeekTow wtobs wtoeP) <= abs (diffGpsWeekTow wtoeF wtobs)
@@ -203,7 +203,7 @@ navMapFromRinex bs0
     | otherwise = let rnxBody = dropRnxHeader bs0
                   in if L8.null rnxBody
                      then error "Cannot find navigation data in the file."
-                     else go IMS.empty rnxBody
+                     else go IntMap.empty rnxBody
       where
         rnxVer      = trim $ takeField  0 9 bs0 
         rnxFileType = trim $ takeField 20 1 bs0
@@ -489,14 +489,14 @@ dropIRNSSNavRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
 -- record with the maximum IODE is kept.
 insertNavRecord :: NavRecord -> NavMap -> NavMap
 insertNavRecord r =
-  IMS.alter updatePrn key1
+  IntMap.alter updatePrn key1
   where
     key1 = prn r
     key2 = (week r, toe r)
     updatePrn Nothing =
-        Just (MS.singleton key2 r)
+        Just (Map.singleton key2 r)
     updatePrn (Just subMap) =
-        Just (MS.alter (chooseNewer r) key2 subMap)
+        Just (Map.alter (chooseNewer r) key2 subMap)
 
     chooseNewer :: NavRecord -> Maybe NavRecord -> Maybe NavRecord
     chooseNewer new Nothing    = Just new
