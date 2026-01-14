@@ -1,4 +1,4 @@
-2026-01-06
+2026-01-14
 
 EN:
 CONTENTS
@@ -14,7 +14,7 @@ gps_lab02 - GPS satellite position for given GPS time using orbital
 gps_lab03 - GPS satellite position at GPS transmission time for
             dual-frequency pseudorange observation using single
             navigation record
-
+            
 gps_lab05 - Selection of GPS navigation record from RINEX 3.04
             navigation file for the observation time
 
