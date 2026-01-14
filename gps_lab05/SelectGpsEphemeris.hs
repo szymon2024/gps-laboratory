@@ -82,8 +82,12 @@
 
 -}
 
+----------------------------------------------------------------------
+
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+
+----------------------------------------------------------------------
 
 import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict                   (Map)
@@ -104,6 +108,8 @@ import           Foreign                           (Ptr, alloca, peek, minusPtr)
 import           Foreign.C.Types                   (CChar, CDouble(CDouble)) 
 import           Foreign.C.String                  (CString)                 
 import           System.IO.Unsafe                  (unsafePerformIO)
+
+----------------------------------------------------------------------
 
 -- | GPS navigation data record from RINEX 3.04 navigation file (subset of fields).
 data NavRecord = NavRecord
@@ -418,7 +424,7 @@ readLine8NavData bs = do
 ----------------------------------------------------------------------
 
 dropLine80 :: L8.ByteString -> L8.ByteString
-dropLine80     =  snd . readEOL . L8.drop 80
+dropLine80 =  snd . readEOL . L8.drop 80
 
 ----------------------------------------------------------------------
                       
