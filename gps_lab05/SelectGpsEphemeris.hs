@@ -212,16 +212,16 @@ navMapFromRinex bs0
         go m bs
           | L8.null bs = m
           | first == "G" =
-              let (r, bs') = readGpsRecord bs
-                  m' | svHealth r == 0 = insertRecord r m
+              let (r, bs') = readGpsNavRecord bs
+                  m' | svHealth r == 0 = insertNavRecord r m
                      | otherwise       =  m
               in go m' bs' 
-          | first == "E" = go m (dropGalileoRecord bs)
-          | first == "R" = go m (dropGlonassRecord bs)
-          | first == "J" = go m (dropQZSSRecord bs)
-          | first == "C" = go m (dropBDSRecord bs)
-          | first == "S" = go m (dropSBASRecord bs)
-          | first == "I" = go m (dropIRNSSRecord bs)
+          | first == "E" = go m (dropGalileoNavRecord bs)
+          | first == "R" = go m (dropGlonassNavRecord bs)
+          | first == "J" = go m (dropQZSSNavRecord bs)
+          | first == "C" = go m (dropBDSNavRecord bs)
+          | first == "S" = go m (dropSBASNavRecord bs)
+          | first == "I" = go m (dropIRNSSNavRecord bs)
           | otherwise    = error $
                            "Unexpected char at the beginning \
                            \of the line starting with \"" ++
@@ -263,8 +263,8 @@ dropRnxHeader bs0
 ----------------------------------------------------------------------
 
 -- | Read GPS satellite navigation record
-readGpsRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
-readGpsRecord bs =
+readGpsNavRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
+readGpsNavRecord bs =
     let ((prn, toc, af0, af1, af2), bs1) =
             case readLine1NavData bs of
               Just d  -> d
@@ -433,46 +433,46 @@ readEOL bs =
 
 ----------------------------------------------------------------------
 
-dropGalileoRecord :: L8.ByteString -> L8.ByteString
-dropGalileoRecord = dropLastLine . drop7Lines
+dropGalileoNavRecord :: L8.ByteString -> L8.ByteString
+dropGalileoNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
       dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 23
       
 ----------------------------------------------------------------------
 
-dropGlonassRecord :: L8.ByteString -> L8.ByteString
-dropGlonassRecord = drop4Lines
+dropGlonassNavRecord :: L8.ByteString -> L8.ByteString
+dropGlonassNavRecord = drop4Lines
     where
       drop4Lines  bs = iterate dropLine80 bs !! 4
       
 ----------------------------------------------------------------------
 
-dropQZSSRecord :: L8.ByteString -> L8.ByteString
-dropQZSSRecord = dropLastLine . drop7Lines
+dropQZSSNavRecord :: L8.ByteString -> L8.ByteString
+dropQZSSNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
       dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
 
 ----------------------------------------------------------------------
                      
-dropBDSRecord :: L8.ByteString -> L8.ByteString
-dropBDSRecord = dropLastLine . drop7Lines
+dropBDSNavRecord :: L8.ByteString -> L8.ByteString
+dropBDSNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
       dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
       
 ----------------------------------------------------------------------
 
-dropSBASRecord :: L8.ByteString -> L8.ByteString
-dropSBASRecord = drop4Lines
+dropSBASNavRecord :: L8.ByteString -> L8.ByteString
+dropSBASNavRecord = drop4Lines
     where
       drop4Lines  bs = iterate dropLine80 bs !! 4
       
 ----------------------------------------------------------------------
 
-dropIRNSSRecord :: L8.ByteString -> L8.ByteString
-dropIRNSSRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
+dropIRNSSNavRecord :: L8.ByteString -> L8.ByteString
+dropIRNSSNavRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
     where
       drop5Lines  bs = iterate dropLine80 bs !! 5
       drop6Line    = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 61
@@ -487,8 +487,8 @@ dropIRNSSRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
 -- if the new record has a greater IODE than the existing one.
 -- This ensures that for each (week, toe) only the navigation
 -- record with the maximum IODE is kept.
-insertRecord :: NavRecord -> NavMap -> NavMap
-insertRecord r =
+insertNavRecord :: NavRecord -> NavMap -> NavMap
+insertNavRecord r =
   IMS.alter updatePrn key1
   where
     key1 = prn r
