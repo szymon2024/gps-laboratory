@@ -154,7 +154,7 @@ main = do
       prn  = 6                                              -- Input: satellite number
   bs <- L8.readFile fn
   let navMap = navMapFromRinex bs
-  case selectEphemeris tobs prn navMap of
+  case selectGpsEphemeris tobs prn navMap of
     Nothing -> printf "Cannot find valid ephemeris \
                       \for given prn and observation time\n"
     Just r  -> do                                           -- Output: GPS navigation record 
@@ -167,12 +167,12 @@ main = do
 -- | Selects a navigation record for a given observation time and
 -- satellite PRN from NavMap. The navigation record with the nearest
 -- (week, toe) to the specified observation time is selected.
-selectEphemeris
+selectGpsEphemeris
     :: GpsTime                                    -- ^ observation time
     -> Int                                        -- ^ PRN (satellite identfier)
     -> NavMap                                     -- ^ map with navigation records
     -> Maybe NavRecord                            -- ^ selected navigation record
-selectEphemeris tobs prn navMap = do
+selectGpsEphemeris tobs prn navMap = do
     subMap <- IMS.lookup prn navMap
     let wtobs  = gpsTimeToWeekTow tobs
         past   = MS.lookupLE wtobs subMap
