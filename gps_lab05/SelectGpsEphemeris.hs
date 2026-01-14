@@ -271,45 +271,21 @@ dropRnxHeader bs0
 -- | Read GPS satellite navigation record
 readGpsNavRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
 readGpsNavRecord bs =
-    let ((prn, toc, af0, af1, af2), bs1) =
-            case readLine1NavData bs of
-              Just d  -> d
-              Nothing -> error "Cannot read first line of record."
+    let ((prn, toc, af0, af1, af2), bs1)  = readLine1NavData bs
               
-        ((iodeD, crs, deltaN, m0), bs2)  =
-            case readLine2NavData bs1 of
-              Just d  -> d 
-              Nothing -> error "Cannot read second line of record."
+        ((iodeD, crs, deltaN, m0), bs2)   = readLine2NavData bs1
               
-        ((cuc, e, cus, sqrtA), bs3)      =
-            case readLine3NavData bs2 of
-              Just d  -> d
-              Nothing -> error "Cannot read third line of record."
+        ((cuc, e, cus, sqrtA), bs3)       = readLine3NavData bs2
               
-        ((toeD, cic, omega0, cis), bs4)  =
-            case readLine4NavData bs3 of
-              Just d  -> d
-              Nothing -> error "Cannot read fourth line of record."
+        ((toeD, cic, omega0, cis), bs4)   = readLine4NavData bs3
               
-        ((i0, crc, omega, omegaDot), bs5) =
-            case readLine5NavData bs4 of
-              Just d  -> d
-              Nothing -> error "Cannot read fifth line of record."
+        ((i0, crc, omega, omegaDot), bs5) = readLine5NavData bs4
               
-        ((iDot, weekD), bs6)              =
-            case readLine6NavData bs5 of
-              Just d  -> d
-              Nothing -> error "Cannot read sixth line of record."
+        ((iDot, weekD), bs6)              = readLine6NavData bs5
 
-        ((svHealthD, iodcD), bs7)         =
-            case readLine7NavData bs6 of
-              Just d  -> d
-              Nothing -> error "Cannot read seventh line of record."       
+        ((svHealthD, iodcD), bs7)         = readLine7NavData bs6
               
-        ((ttom, fitIntervalD), bs8)       =
-            case readLine8NavData bs7 of
-              Just d  -> d
-              Nothing -> error "Cannot read eighth line of record."
+        ((ttom, fitIntervalD), bs8)       = readLine8NavData bs7
 
         iode         = round      iodeD
         toe          = realToFrac toeD
@@ -324,100 +300,116 @@ readGpsNavRecord bs =
                             
 readLine1NavData
     :: L8.ByteString
-    -> Maybe ((Int, GpsTime, Double, Double, Double), L8.ByteString)
-readLine1NavData bs = do
-  (prn, _)  <- L8.readInt $ dropSpace $ takeField  1 2 bs       -- dropSpace is needed by readInt
-  (y  , _)  <- L8.readInt $ dropSpace $ takeField  4 4 bs
-  (mon, _)  <- L8.readInt $ dropSpace $ takeField  9 2 bs
-  (d  , _)  <- L8.readInt $ dropSpace $ takeField 12 2 bs
-  (h  , _)  <- L8.readInt $ dropSpace $ takeField 15 2 bs
-  (m  , _)  <- L8.readInt $ dropSpace $ takeField 18 2 bs
-  (s  , _)  <- L8.readInt $ dropSpace $ takeField 21 2 bs
+    -> ((Int, GpsTime, Double, Double, Double), L8.ByteString)
+readLine1NavData bs =
+    let
+        prn  = getFieldInt  1 2 bs       -- dropSpace is needed by readInt
+        y    = getFieldInt  4 4 bs
+        mon  = getFieldInt  9 2 bs
+        d    = getFieldInt 12 2 bs
+        h    = getFieldInt 15 2 bs
+        m    = getFieldInt 18 2 bs
+        s    = getFieldInt 21 2 bs
   
-  let toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
+        toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
             
-  af0       <- getDouble $ dropSpace $ takeField 23 19 bs
-  af1       <- getDouble $ dropSpace $ takeField 42 19 bs
-  af2       <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((prn, toc, af0, af1, af2), dropLine80 bs)
+        af0       = getFieldDouble 23 19 bs
+        af1       = getFieldDouble 42 19 bs
+        af2       = getFieldDouble 61 19 bs
+                    
+  in ((prn, toc, af0, af1, af2), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine2NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine2NavData bs = do
-  iode      <- getDouble $ dropSpace $ takeField  4 19 bs
-  crs       <- getDouble $ dropSpace $ takeField 23 19 bs
-  deltaN    <- getDouble $ dropSpace $ takeField 42 19 bs
-  m0        <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((iode, crs, deltaN, m0), dropLine80 bs)
+    -> ((Double, Double, Double, Double), L8.ByteString)
+readLine2NavData bs =
+    let
+        iode      = getFieldDouble  4 19 bs
+        crs       = getFieldDouble 23 19 bs
+        deltaN    = getFieldDouble 42 19 bs
+        m0        = getFieldDouble 61 19 bs
+                    
+    in ((iode, crs, deltaN, m0), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine3NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine3NavData bs = do
-  cuc       <- getDouble $ dropSpace $ takeField  4 19 bs
-  e         <- getDouble $ dropSpace $ takeField 23 19 bs
-  cus       <- getDouble $ dropSpace $ takeField 42 19 bs
-  sqrtA     <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((cuc, e, cus, sqrtA), dropLine80 bs)
+    -> ((Double, Double, Double, Double), L8.ByteString)
+readLine3NavData bs =
+    let
+        cuc       = getFieldDouble  4 19 bs
+        e         = getFieldDouble 23 19 bs
+        cus       = getFieldDouble 42 19 bs
+        sqrtA     = getFieldDouble 61 19 bs
+                    
+    in ((cuc, e, cus, sqrtA), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine4NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine4NavData bs = do
-  toe       <- getDouble $ dropSpace $ takeField  4 19 bs
-  cic       <- getDouble $ dropSpace $ takeField 23 19 bs
-  omega0    <- getDouble $ dropSpace $ takeField 42 19 bs
-  cis       <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((toe, cic, omega0, cis), dropLine80 bs)
+    -> ((Double, Double, Double, Double), L8.ByteString)
+readLine4NavData bs =
+    let
+        toe       = getFieldDouble  4 19 bs
+        cic       = getFieldDouble 23 19 bs
+        omega0    = getFieldDouble 42 19 bs
+        cis       = getFieldDouble 61 19 bs
+    in ((toe, cic, omega0, cis), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine5NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine5NavData bs = do
-  i0        <- getDouble $ dropSpace $ takeField  4 19 bs
-  crc       <- getDouble $ dropSpace $ takeField 23 19 bs
-  omega     <- getDouble $ dropSpace $ takeField 42 19 bs
-  omegaDot  <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((i0, crc, omega, omegaDot), dropLine80 bs)
+    -> ((Double, Double, Double, Double), L8.ByteString)
+readLine5NavData bs =
+    let
+        i0        = getFieldDouble  4 19 bs
+        crc       = getFieldDouble 23 19 bs
+        omega     = getFieldDouble 42 19 bs
+        omegaDot  = getFieldDouble 61 19 bs
+                    
+    in ((i0, crc, omega, omegaDot), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine6NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double), L8.ByteString)
-readLine6NavData bs = do
-  iDot      <- getDouble $ dropSpace $ takeField  4 19 bs
-  weekD     <- getDouble $ dropSpace $ takeField 42 19 bs
-  return ((iDot, weekD), dropLine80 bs)
+    -> ((Double, Double), L8.ByteString)
+readLine6NavData bs =
+    let
+        iDot      = getFieldDouble  4 19 bs
+        weekD     = getFieldDouble 42 19 bs
+                    
+    in ((iDot, weekD), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine7NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double), L8.ByteString)
-readLine7NavData bs = do
-  svHealthD  <- getDouble $ dropSpace $ takeField 23 19 bs
-  iodc       <- getDouble $ dropSpace $ takeField 61 19 bs
-  return ((svHealthD, iodc), dropLine80 bs)
+    -> ((Double, Double), L8.ByteString)
+readLine7NavData bs =
+    let
+        svHealthD  = getFieldDouble 23 19 bs
+        iodc       = getFieldDouble 61 19 bs
+                     
+    in ((svHealthD, iodc), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
 readLine8NavData
     :: L8.ByteString
-    -> Maybe ((Double, Double), L8.ByteString)
-readLine8NavData bs = do
-  ttom          <- getDouble $ dropSpace $ takeField  4 19 bs
-  fitIntervalD  <- getDouble $ dropSpace $ takeField 23 19 bs
-  return ((ttom, fitIntervalD), dropLastLine bs)
+    -> ((Double, Double), L8.ByteString)
+readLine8NavData bs =
+    let
+        ttom          = getFieldDouble  4 19 bs
+        fitIntervalD  = getFieldDouble 23 19 bs
+                        
+    in ((ttom, fitIntervalD), dropLastLine bs)
+       
     where
       dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
       
@@ -609,15 +601,44 @@ readDouble bs = unsafePerformIO $
 ----------------------------------------------------------------------
 
 -- | Get Double value from ByteString field.
---   Its purpose is to stop if the entire field has not been read.
-getDouble :: L8.ByteString -> Maybe Double
-getDouble bs = do
-  (val, rest) <- readDouble bs
-  case L8.uncons rest of
-    Nothing                 -> Just val
-    _ | L8.all isSpace rest -> Just val
-    _                       -> error $ "Cannot read \"" ++ L8.unpack rest
-                               ++ "\" from \"" ++ L8.unpack bs ++ "\""  
+getFieldDouble
+    :: Int64                            -- ^ start position of field
+    -> Int64                            -- ^ length of field
+    -> L8.ByteString                    
+    -> Double
+getFieldDouble start len bs = do
+  case readDouble (trim f) of
+    Just (val, rest)
+      | L8.null rest -> val
+    _                -> error $ unwords
+                           [ "\nCannot read Double from field at pos = ", show start
+                           , " length = ", show len
+                           , " field = ", show f
+                           , "\nLine: ", show $ L8.takeWhile (not . (`L8.elem` "\n\r")) bs
+                           ]
+  where
+      f = takeField start len bs
+
+----------------------------------------------------------------------
+
+-- | Get Int value from ByteString field.
+getFieldInt
+    :: Int64                            -- ^ start position of field
+    -> Int64                            -- ^ length of field
+    -> L8.ByteString                    
+    -> Int
+getFieldInt start len bs = do
+  case L8.readInt (trim f) of
+    Just (val, rest)
+      | L8.null rest -> val
+    _                -> error $ unwords
+                           [ "\nCannot read Int from field at pos = ", show start
+                           , " length = ", show len
+                           , " field = ", show f
+                           , "\nLine: ", show $ L8.takeWhile (not . (`L8.elem` "\n\r")) bs
+                           ]
+  where
+      f = takeField start len bs
 
 ----------------------------------------------------------------------
 
