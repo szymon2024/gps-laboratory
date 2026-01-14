@@ -1,4 +1,4 @@
--- 2025-12-26
+-- 2026-01-14
 
 {- | The program selects a navigation record containing ephemeris from
      the RINEX 3.04 navigation file for a given GPS observation time
@@ -104,7 +104,7 @@ import qualified Data.ByteString.Unsafe     as BSU (unsafeUseAsCString)
 import           Foreign                           (Ptr, alloca, peek, minusPtr)
 import           Foreign.C.Types                   (CChar, CDouble(CDouble)) 
 import           Foreign.C.String                  (CString)                 
-import           System.IO.Unsafe                  (unsafePerformIO)         
+import           System.IO.Unsafe                  (unsafePerformIO)
 
 -- | GPS navigation data record from RINEX 3.04 navigation file (subset of fields).
 data NavRecord = NavRecord
@@ -144,7 +144,9 @@ type NavMap     = IntMap (Map EphWeekTow NavRecord)    -- ^ key1:  prn (satellit
                                                        --   key2:  (week, toe)
                                                        --   value2: navigation record for a healthy satellite
                                                        --           and with max iode for (week, toe)
-                                                              
+
+----------------------------------------------------------------------
+
 -- Entry point of the program.
 main :: IO ()
 main = do
@@ -161,9 +163,10 @@ main = do
                 (formatTime defaultTimeLocale "%Y %m %d %H %M %S%Q" tobs)
          printfRecord r
 
+----------------------------------------------------------------------                      
                       
 -- | Selects a navigation record for a given observation time and
--- satellite PRN from navigation RINEX file content. The navigation record with the nearest
+-- satellite PRN from NavMap. The navigation record with the nearest
 -- (week, toe) to the specified observation time is selected.
 selectEphemeris
     :: GpsTime                                    -- ^ observation time
@@ -188,6 +191,8 @@ selectEphemeris tobs prn navMap = do
       then Just r
       else Nothing                      
 
+----------------------------------------------------------------------
+
 -- | Build a navigation map from GPS navigation records of RINEX 3.04
 --   navigation body for healthy satellites and with max iode for
 --   (week, toe).
@@ -196,7 +201,7 @@ mapFromRinex bs0
     | L8.null bs0           = error "Empty file"
     | rnxVer      /= "3.04" = error "Not RINEX 3.04 file"
     | rnxFileType /= "N"    = error "Not navigation file"
-    | otherwise = let rnxBody = rnxSkipHeader bs0
+    | otherwise = let rnxBody = dropRnxHeader bs0
                   in if L8.null rnxBody
                      then error "Cannot find navigation data in the file."
                      else go IMS.empty rnxBody
@@ -207,145 +212,275 @@ mapFromRinex bs0
         go :: NavMap -> L8.ByteString -> NavMap
         go m bs
           | L8.null bs = m
-          | L8.take 1 bs == "G" =
-              let (r, bs') = readRecord bs
-                  m' = if svHealth r == 0
-                       then insertRecord r m
-                       else m
+          | first == "G" =
+              let (r, bs') = readGpsRecord bs
+                  m' | svHealth r == 0 = insertRecord r m
+                     | otherwise       =  m
               in go m' bs' 
-          | otherwise =
-              go m (skipRecord bs)
+          | first == "E" = go m (dropGalileoRecord bs)
+          | first == "R" = go m (dropGlonassRecord bs)
+          | first == "J" = go m (dropQZSSRecord bs)
+          | first == "C" = go m (dropBDSRecord bs)
+          | first == "S" = go m (dropSBASRecord bs)
+          | first == "I" = go m (dropIRNSSRecord bs)
+          | otherwise    = error $
+                           "Unexpected char at the beginning \
+                           \of the line starting with \"" ++
+                            L8.unpack (L8.take 30 bs) ++ "\"."
+          where
+            first = L8.take 1 bs
 
--- | Skips header of RINEX 3.04 file. Uses information about the label
---   position and the fixed length of the header line content.
-rnxSkipHeader :: L8.ByteString -> L8.ByteString
-rnxSkipHeader bs0 = loop bs0
-  where
-    loop bs
-      | L8.null bs                  = error "Cannot find header"
-      | label bs == "END OF HEADER" = dropLastLine bs
-      | otherwise                   = loop (dropLine bs)
-      where
-        label    = trim . L8.takeWhile (not . (`L8.elem` "\r\n")) . L8.drop 60
-        dropLine =        L8.dropWhile        (`L8.elem` "\r\n")  . L8.drop 80
-        -- The last line is very often not completed until 80 characters
-        dropLastLine = L8.dropWhile        (`L8.elem` "\r\n")
-                     . L8.dropWhile (not . (`L8.elem` "\r\n"))
-                     . L8.drop 72                           -- don't check before 60 + length "END OF HEADER"
+----------------------------------------------------------------------
 
--- | Read GPS satellite navigation record eight lines.  It is based on
---   the knowledge that the content of a line should be 80 characters,
---   but last line often breaks this rule.
-readRecordLines :: L8.ByteString -> ([L8.ByteString], L8.ByteString)
-readRecordLines bs0 =
-    let (l1, bs1) = readLine bs0
-        (l2, bs2) = readLine bs1
-        (l3, bs3) = readLine bs2
-        (l4, bs4) = readLine bs3
-        (l5, bs5) = readLine bs4
-        (l6, bs6) = readLine bs5
-        (l7, bs7) = readLine bs6
-        (l8, bs8) = readLastLine bs7
-    in ([l1,l2,l3,l4,l5,l6,l7,l8], bs8)
+-- | Drop header of RINEX 3.04 file. Uses information about
+--   the label position and the fixed length of the header line
+--   content.  The header record takes one line and consists of:
+--    - data field   0-59,
+--    - label field 60-79.
+--   The function cannot use the RINEX 3.04 specification knowledge
+--   that the width of a line should always be 80 characters, because
+--   last line sometimes breaks this rule.
+dropRnxHeader :: L8.ByteString -> L8.ByteString
+dropRnxHeader bs0
+    | L8.null bs0             = error
+                                "Empty input."
+    | rnxVer bs0 /= "3.04"    = error
+                                "Not RINEX 3.04 file"
+    | otherwise               = go bs0
     where
-      -- Read a line of 80 characters and a line separator.
-      readLine :: L8.ByteString -> (L8.ByteString, L8.ByteString)
-      readLine bs =
-          let (line, bs') = L8.splitAt 80 bs
-              dropLineSep = L8.dropWhile (`L8.elem` "\r\n")
-          in (line, dropLineSep bs')
+      go :: L8.ByteString -> L8.ByteString
+      go bs
+          | L8.null bs = error
+                         "END OF HEADER not found."
+          | lookEOH bs = dropLastLine bs
+          | otherwise  = go . dropLine $ bs
 
-      --   Last line can have two, three or four fields
-      --   and sometimes it is not completed to 80 characters.
-      readLastLine :: L8.ByteString -> (L8.ByteString, L8.ByteString)
-      readLastLine bs =
-          let (part1, bs1) = L8.splitAt 42 bs                         -- read the part containing two fields
-              (part2, bs2) = L8.break     (`L8.elem` "\r\n") bs1
-              dropLineSep  = L8.dropWhile (`L8.elem` "\r\n")
-          in (part1 <> part2, dropLineSep bs2)
+      lookEOH = (== "END OF HEADER") . L8.take 13 . dropSpace . L8.drop 60
+
+      dropLastLine =  snd . readEOL . L8.dropWhile (not . (`L8.elem` "\r\n")) . L8.drop 73
+                    
+      rnxVer      = trim . takeField  0 9
+
+----------------------------------------------------------------------
 
 -- | Read GPS satellite navigation record
-readRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
-readRecord bs =
-    let (ls, bs') = readRecordLines bs
-    in case getRecord ls of
-         Just r  -> (r, bs')
-         Nothing ->
-             error $ L8.unpack $ "Unable to get GPS navigation record from \n:"
-                               <> L8.unlines ls
+readGpsRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
+readGpsRecord bs =
+    let ((prn, toc, af0, af1, af2), bs1) =
+            case readLine1Data bs of
+              Just d  -> d
+              Nothing -> error "Cannot read first line of record."
+              
+        ((iodeD, crs, deltaN, m0), bs2)  =
+            case readLine2Data bs1 of
+              Just d  -> d 
+              Nothing -> error "Cannot read second line of record."
+              
+        ((cuc, e, cus, sqrtA), bs3)      =
+            case readLine3Data bs2 of
+              Just d  -> d
+              Nothing -> error "Cannot read third line of record."
+              
+        ((toeD, cic, omega0, cis), bs4)  =
+            case readLine4Data bs3 of
+              Just d  -> d
+              Nothing -> error "Cannot read fourth line of record."
+              
+        ((i0, crc, omega, omegaDot), bs5) =
+            case readLine5Data bs4 of
+              Just d  -> d
+              Nothing -> error "Cannot read fifth line of record."
+              
+        ((iDot, weekD), bs6)              =
+            case readLine6Data bs5 of
+              Just d  -> d
+              Nothing -> error "Cannot read sixth line of record."
 
--- | Get GPS navigation record from GPS record lines.  Expects 8 lines
---   as input. It does not read fields one by one, as parsers do, but
---   by position in the line.
-getRecord :: [L8.ByteString] -> Maybe NavRecord
-getRecord ls =
-  case ls of
-    [l1,l2,l3,l4,l5,l6,l7,l8] -> do
-            (prn, _)  <- L8.readInt $ trim $ takeField  1 2 l1              -- trim is needed by readInt
-            (y  , _)  <- L8.readInt $ trim $ takeField  4 4 l1
-            (mon, _)  <- L8.readInt $ trim $ takeField  9 2 l1
-            (d  , _)  <- L8.readInt $ trim $ takeField 12 2 l1
-            (h  , _)  <- L8.readInt $ trim $ takeField 15 2 l1
-            (m  , _)  <- L8.readInt $ trim $ takeField 18 2 l1
-            (s  , _)  <- L8.readInt $ trim $ takeField 21 2 l1
+        ((svHealthD, iodcD), bs7)         =
+            case readLine7Data bs6 of
+              Just d  -> d
+              Nothing -> error "Cannot read seventh line of record."       
+              
+        ((ttom, fitIntervalD), bs8)       =
+            case readLine8Data bs7 of
+              Just d  -> d
+              Nothing -> error "Cannot read eighth line of record."
+
+        iode         = round      iodeD
+        toe          = realToFrac toeD
+        week         = round      weekD           -- conversion is needed for equality comparisons
+        svHealth     = round      svHealthD
+        iodc         = round      iodcD
+        fitInterval  = round      fitIntervalD
+              
+    in (NavRecord {..}, bs8)
+
+----------------------------------------------------------------------
+                            
+readLine1Data
+    :: L8.ByteString
+    -> Maybe ((Int, GpsTime, Double, Double, Double), L8.ByteString)
+readLine1Data bs = do
+  (prn, _)  <- L8.readInt $ dropSpace $ takeField  1 2 bs       -- dropSpace is needed by readInt
+  (y  , _)  <- L8.readInt $ dropSpace $ takeField  4 4 bs
+  (mon, _)  <- L8.readInt $ dropSpace $ takeField  9 2 bs
+  (d  , _)  <- L8.readInt $ dropSpace $ takeField 12 2 bs
+  (h  , _)  <- L8.readInt $ dropSpace $ takeField 15 2 bs
+  (m  , _)  <- L8.readInt $ dropSpace $ takeField 18 2 bs
+  (s  , _)  <- L8.readInt $ dropSpace $ takeField 21 2 bs
   
-            let toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
+  let toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
+            
+  af0       <- getDouble $ dropSpace $ takeField 23 19 bs
+  af1       <- getDouble $ dropSpace $ takeField 42 19 bs
+  af2       <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((prn, toc, af0, af1, af2), dropLine bs)
 
-            af0       <- getDouble $ takeField 23 19 l1
-            af1       <- getDouble $ takeField 42 19 l1
-            af2       <- getDouble $ takeField 61 19 l1
-                 
-            iodeD     <- getDouble $ takeField  4 19 l2
-            crs       <- getDouble $ takeField 23 19 l2
-            deltaN    <- getDouble $ takeField 42 19 l2
-            m0        <- getDouble $ takeField 61 19 l2
-                 
-            cuc       <- getDouble $ takeField  4 19 l3
-            e         <- getDouble $ takeField 23 19 l3
-            cus       <- getDouble $ takeField 42 19 l3
-            sqrtA     <- getDouble $ takeField 61 19 l3
+----------------------------------------------------------------------
+         
+readLine2Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
+readLine2Data bs = do
+  iode      <- getDouble $ dropSpace $ takeField  4 19 bs
+  crs       <- getDouble $ dropSpace $ takeField 23 19 bs
+  deltaN    <- getDouble $ dropSpace $ takeField 42 19 bs
+  m0        <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((iode, crs, deltaN, m0), dropLine bs)
 
-            toeD      <- getDouble $ takeField  4 19 l4
-            cic       <- getDouble $ takeField 23 19 l4
-            omega0    <- getDouble $ takeField 42 19 l4
-            cis       <- getDouble $ takeField 61 19 l4
+----------------------------------------------------------------------
+         
+readLine3Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
+readLine3Data bs = do
+  cuc       <- getDouble $ dropSpace $ takeField  4 19 bs
+  e         <- getDouble $ dropSpace $ takeField 23 19 bs
+  cus       <- getDouble $ dropSpace $ takeField 42 19 bs
+  sqrtA     <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((cuc, e, cus, sqrtA), dropLine bs)
 
-            i0        <- getDouble $ takeField  4 19 l5
-            crc       <- getDouble $ takeField 23 19 l5
-            omega     <- getDouble $ takeField 42 19 l5
-            omegaDot  <- getDouble $ takeField 61 19 l5
-                                                               
-            iDot      <- getDouble $ takeField  4 19 l6
-            weekD     <- getDouble $ takeField 42 19 l6
+----------------------------------------------------------------------
+         
+readLine4Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
+readLine4Data bs = do
+  toe       <- getDouble $ dropSpace $ takeField  4 19 bs
+  cic       <- getDouble $ dropSpace $ takeField 23 19 bs
+  omega0    <- getDouble $ dropSpace $ takeField 42 19 bs
+  cis       <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((toe, cic, omega0, cis), dropLine bs)
 
-            svHealthD <- getDouble $ takeField 23 19 l7
-            iodcD     <- getDouble $ takeField 61 19 l7
+----------------------------------------------------------------------
+         
+readLine5Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double, Double, Double), L8.ByteString)
+readLine5Data bs = do
+  i0        <- getDouble $ dropSpace $ takeField  4 19 bs
+  crc       <- getDouble $ dropSpace $ takeField 23 19 bs
+  omega     <- getDouble $ dropSpace $ takeField 42 19 bs
+  omegaDot  <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((i0, crc, omega, omegaDot), dropLine bs)
+
+----------------------------------------------------------------------
+         
+readLine6Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double), L8.ByteString)
+readLine6Data bs = do
+  iDot      <- getDouble $ dropSpace $ takeField  4 19 bs
+  weekD     <- getDouble $ dropSpace $ takeField 42 19 bs
+  return ((iDot, weekD), dropLine bs)
+
+----------------------------------------------------------------------
+         
+readLine7Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double), L8.ByteString)
+readLine7Data bs = do
+  svHealthD  <- getDouble $ dropSpace $ takeField 23 19 bs
+  iodc       <- getDouble $ dropSpace $ takeField 61 19 bs
+  return ((svHealthD, iodc), dropLine bs)
+
+----------------------------------------------------------------------
+         
+readLine8Data
+    :: L8.ByteString
+    -> Maybe ((Double, Double), L8.ByteString)
+readLine8Data bs = do
+  ttom          <- getDouble $ dropSpace $ takeField  4 19 bs
+  fitIntervalD  <- getDouble $ dropSpace $ takeField 23 19 bs
+  return ((ttom, fitIntervalD), dropLastLine bs)
+    where
+      dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
+      
+----------------------------------------------------------------------
+
+dropLine :: L8.ByteString -> L8.ByteString
+dropLine     =  snd . readEOL . L8.drop 80
+
+----------------------------------------------------------------------
+                      
+readEOL :: L8.ByteString -> (L8.ByteString, L8.ByteString)
+readEOL bs =
+    case L8.uncons bs of
+      Just ('\n', rest)  -> ("\n", rest)
+      Just ('\r', rest1) -> case L8.uncons rest1 of
+                              Just ('\n', rest2) -> ("\r\n", rest2)
+                              _                  -> ("\r"  , rest1)
+      _                  -> error "Cannot find end of line."
+
+----------------------------------------------------------------------
+
+dropGalileoRecord :: L8.ByteString -> L8.ByteString
+dropGalileoRecord = dropLastLine . drop7Lines
+    where
+      drop7Lines  bs = iterate dropLine bs !! 7
+      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 23
+      
+----------------------------------------------------------------------
+
+dropGlonassRecord :: L8.ByteString -> L8.ByteString
+dropGlonassRecord = drop4Lines
+    where
+      drop4Lines  bs = iterate dropLine bs !! 4
+      
+----------------------------------------------------------------------
+
+dropQZSSRecord :: L8.ByteString -> L8.ByteString
+dropQZSSRecord = dropLastLine . drop7Lines
+    where
+      drop7Lines  bs = iterate dropLine bs !! 7
+      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
+
+----------------------------------------------------------------------
                      
-            ttom      <- getDouble $ takeField  4 19 l8
-            fitIntervalD  <- getDouble $ takeField 23 19 l8
+dropBDSRecord :: L8.ByteString -> L8.ByteString
+dropBDSRecord = dropLastLine . drop7Lines
+    where
+      drop7Lines  bs = iterate dropLine bs !! 7
+      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
+      
+----------------------------------------------------------------------
 
-            let iode         = round      iodeD
-                toe          = realToFrac toeD
-                week         = round      weekD             -- conversion is needed for equality comparisons
-                svHealth     = round      svHealthD
-                iodc         = round      iodcD
-                fitInterval  = round      fitIntervalD
-            return NavRecord {..}
-    _ -> Nothing
+dropSBASRecord :: L8.ByteString -> L8.ByteString
+dropSBASRecord = drop4Lines
+    where
+      drop4Lines  bs = iterate dropLine bs !! 4
+      
+----------------------------------------------------------------------
 
--- | Skip record reading lines to begining of other record.  Used to
---   skip records of constellations other than GPS.
-skipRecord :: L8.ByteString -> L8.ByteString
-skipRecord bs =
-  let (_, rest) = L8.break (== '\n') bs
-      rest' = L8.drop 1 rest
-      in if isNewRecordLine rest'
-           then rest'
-           else skipRecord rest'
-
--- | Returns True if the bs starts with other sign than ' '                
-isNewRecordLine :: L8.ByteString -> Bool
-isNewRecordLine bs = L8.take 1 bs /= " "
+dropIRNSSRecord :: L8.ByteString -> L8.ByteString
+dropIRNSSRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
+    where
+      drop5Lines  bs = iterate dropLine bs !! 5
+      drop6Line    = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 61
+      drop7Line    = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 61
+      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 23
+      
+----------------------------------------------------------------------
 
 -- | Insert a navigation record into a 'NavMap'.
 -- If there is no entry for the given PRN or (week, toe), the record is
@@ -371,10 +506,19 @@ insertRecord r =
         then Just new
         else Just old
 
+----------------------------------------------------------------------
 
--- | Trim leading and trailing whitespace from a ByteString.              
+-- | Trim leading and trailing whitespace from a lazy ByteString.              
 trim :: L8.ByteString -> L8.ByteString
 trim = L8.dropWhile isSpace . L8.dropWhileEnd isSpace
+
+----------------------------------------------------------------------
+
+-- | Drop leading whitespaces from a lazy ByteString.              
+dropSpace :: L8.ByteString -> L8.ByteString
+dropSpace = L8.dropWhile isSpace
+
+----------------------------------------------------------------------
 
 -- | Conversion of GPS time to GPS week and time-of-week
 gpsTimeToWeekTow
@@ -389,6 +533,8 @@ gpsTimeToWeekTow (LocalTime date (TimeOfDay h m s)) =
                                     )
                      + s
     in (w, tow)
+
+----------------------------------------------------------------------
 
 -- | Converts GPS week, time-of-week into GPS time
 weekTowToGpsTime
@@ -405,6 +551,8 @@ weekTowToGpsTime (w, tow) =
         s            = fromIntegral sInt + towFrac
     in LocalTime date (TimeOfDay (fromInteger h) (fromInteger m) s)
 
+----------------------------------------------------------------------
+
 -- | Calculates the number of seconds between two (GPS week, tow).
 diffGpsWeekTow
     :: GpsWeekTow                                           -- ^ GPS week, time-of-week
@@ -415,6 +563,8 @@ diffGpsWeekTow (w2,tow2) (w1,tow1) =
     where
       dw   = w2   - w1
       dtow = tow2 - tow1
+
+----------------------------------------------------------------------
 
 -- | Ephemeris validity check based on fit interval ephemeris field for
 --   a given observation time
@@ -427,6 +577,8 @@ isEphemerisValid (w, tow) r =
     where
       diffTime        = diffGpsWeekTow  (w, tow) (week r, toe r)
       halfFitInterval = realToFrac ((fitInterval r) `div` 2 * 3600)
+
+----------------------------------------------------------------------
 
 -- | Function import: double strtod(const char *nptr, char **endptr)
 foreign import ccall unsafe "stdlib.h strtod"
@@ -449,16 +601,20 @@ readDouble bs = unsafePerformIO $
             let rest   = L8.drop (fromIntegral offset) bs
             return (Just (realToFrac val, rest))
 
+----------------------------------------------------------------------
+
 -- | Get Double value from ByteString field.
---   Its purpose is to stop reading if it cannot read the entire field.
---   After reading, the rest may be empty or consist only of spaces.
+--   Its purpose is to stop if the entire field has not been read.
 getDouble :: L8.ByteString -> Maybe Double
 getDouble bs = do
   (val, rest) <- readDouble bs
   case L8.uncons rest of
-    Just (c, _) | c=='D' || c=='d' ->
-      error $ "Unsupported number format with 'D': " ++ L8.unpack bs
-    _ -> guard (L8.all (== ' ') rest) >> return val   
+    Nothing                 -> Just val
+    _ | L8.all isSpace rest -> Just val
+    _                       -> error $ "Cannot read \"" ++ L8.unpack rest
+                               ++ "\" from \"" ++ L8.unpack bs ++ "\""  
+
+----------------------------------------------------------------------
 
 -- | Extract a substring from a line:
 --   starting at position 'start' (0-based),
@@ -467,9 +623,13 @@ getDouble bs = do
 takeField :: Int64 -> Int64 -> L8.ByteString -> L8.ByteString
 takeField start len = L8.take len . L8.drop start
 
+----------------------------------------------------------------------
+
 -- | Makes GpsTime from numbers.
 mkGpsTime :: Integer -> Int -> Int -> Int -> Int -> Pico -> GpsTime
 mkGpsTime y mon d h m s = LocalTime (fromGregorian y mon d) (TimeOfDay h m s)
+
+----------------------------------------------------------------------
 
 -- | Prints a navigation record                          
 printfRecord :: Text.Printf.PrintfType t => NavRecord -> t
