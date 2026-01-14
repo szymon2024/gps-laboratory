@@ -69,8 +69,7 @@ import           Data.Time.LocalTime           (LocalTime (..), TimeOfDay(..))
 import           Data.Time.Format
 import           Data.Fixed                    (Pico)    
 import           Text.Printf                   (printf)
-import qualified Data.ByteString.Char8  as L8
-import           Data.Char                     (isSpace)
+import qualified Data.ByteString.Char8  as S8
     
 import qualified Data.ByteString.Unsafe as BSU (unsafeUseAsCString)
 import           Foreign                       (Ptr, alloca, peek, minusPtr)
@@ -289,45 +288,6 @@ diffSeconds (week, tow) secs =
 
 ----------------------------------------------------------------------
 
--- | Function import: double strtod(const char *nptr, char **endptr)
-foreign import ccall unsafe "stdlib.h strtod"
-    c_strtod :: CString -> Ptr (Ptr CChar) -> IO CDouble
-
--- | 2025-11-01 Data.ByteString.Char8 does not have a readDouble function.
---   Reads Double value from Char8 ByteString.
-readDouble :: L8.ByteString -> Maybe (Double, L8.ByteString)
-readDouble bs = unsafePerformIO $
-    BSU.unsafeUseAsCString bs $ \cstr -> 
-      alloca $ \endPtr -> do
-        val <- c_strtod cstr endPtr
-        end <- peek endPtr
-        if end == cstr
-          then return Nothing
-          else do
-            let offset = end `minusPtr` cstr
-            let rest   = L8.drop offset bs
-            return (Just (realToFrac val, rest))
-
-----------------------------------------------------------------------
-
--- | Get Double value from ByteString field.
---   Its purpose is to stop if the entire field has not been read.
-getDouble :: L8.ByteString -> Maybe Double
-getDouble bs = do
-  (val, rest) <- readDouble bs
-  case L8.uncons rest of
-    Nothing                 -> Just val
-    _ | L8.all isSpace rest -> Just val
-    _                       -> error $ "Cannot read \"" ++ L8.unpack rest
-                               ++ "\" from \"" ++ L8.unpack bs ++ "\""
-
-----------------------------------------------------------------------
-                            
-takeField :: Int -> Int -> L8.ByteString -> L8.ByteString
-takeField start len = L8.take len . L8.drop start
-
-----------------------------------------------------------------------
-
 -- | Makes GpsTime from numbers.
 mkGpsTime :: Integer -> Int -> Int -> Int -> Int -> Pico -> GpsTime
 mkGpsTime y mon d h m s = LocalTime (fromGregorian y mon d) (TimeOfDay h m s)
@@ -335,44 +295,24 @@ mkGpsTime y mon d h m s = LocalTime (fromGregorian y mon d) (TimeOfDay h m s)
 ----------------------------------------------------------------------
 
 -- | Read GPS satellite navigation record
-readRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
+readRecord :: S8.ByteString -> (NavRecord, S8.ByteString)
 readRecord bs =
-    let ((prn, toc, af0, af1, af2), bs1) =
-            case readLine1Data bs of
-              Just d  -> d
-              Nothing -> error "Cannot read first line of record."
+    let
+        ((prn, toc, af0, af1, af2), bs1)  = readFromLine1 bs
               
-        ((crs, deltaN, m0), bs2)         =
-            case readLine2Data bs1 of
-              Just d  -> d 
-              Nothing -> error "Cannot read second line of record."
+        ((crs, deltaN, m0), bs2)          = readFromLine2 bs1
               
-        ((cuc, e, cus, sqrtA), bs3)      =
-            case readLine3Data bs2 of
-              Just d  -> d
-              Nothing -> error "Cannot read third line of record."
+        ((cuc, e, cus, sqrtA), bs3)       = readFromLine3 bs2
               
-        ((toeD, cic, omega0, cis), bs4)  =
-            case readLine4Data bs3 of
-              Just d  -> d
-              Nothing -> error "Cannot read fourth line of record."
+        ((toeD, cic, omega0, cis), bs4)   = readFromLine4 bs3
               
-        ((i0, crc, omega, omegaDot), bs5) =
-            case readLine5Data bs4 of
-              Just d  -> d
-              Nothing -> error "Cannot read fifth line of record."
+        ((i0, crc, omega, omegaDot), bs5) = readFromLine5 bs4
               
-        ((iDot, weekD), bs6)              =
-            case readLine6Data bs5 of
-              Just d  -> d
-              Nothing -> error "Cannot read sixth line of record."
+        ((iDot, weekD), bs6)              = readFromLine6 bs5
 
         bs7 = dropLine80 bs6                        -- skip seventh line        
               
-        ((fitIntervalD), bs8)             =
-            case readLine8Data bs7 of
-              Just d  -> d
-              Nothing -> error "Cannot read eighth line of record."
+        ((fitIntervalD), bs8)             = readFromLine8 bs7
 
         toe          = realToFrac toeD
         week         = round      weekD           -- conversion is needed for equality comparisons
@@ -382,94 +322,177 @@ readRecord bs =
        
 ----------------------------------------------------------------------
                             
-readLine1Data :: L8.ByteString  -> Maybe ((Int, GpsTime, Double, Double, Double), L8.ByteString)
-readLine1Data bs = do
-  (prn, _)  <- L8.readInt $ L8.dropSpace $ takeField  1 2 bs       -- dropSpace is needed by readInt
-  (y  , _)  <- L8.readInt $ L8.dropSpace $ takeField  4 4 bs
-  (mon, _)  <- L8.readInt $ L8.dropSpace $ takeField  9 2 bs
-  (d  , _)  <- L8.readInt $ L8.dropSpace $ takeField 12 2 bs
-  (h  , _)  <- L8.readInt $ L8.dropSpace $ takeField 15 2 bs
-  (m  , _)  <- L8.readInt $ L8.dropSpace $ takeField 18 2 bs
-  (s  , _)  <- L8.readInt $ L8.dropSpace $ takeField 21 2 bs
+readFromLine1 :: S8.ByteString  -> ((Int, GpsTime, Double, Double, Double), S8.ByteString)
+readFromLine1 bs =
+    let
+        prn = getFieldInt  1 2 bs       -- S8.strip is needed by readInt
+        y   = getFieldInt  4 4 bs
+        mon = getFieldInt  9 2 bs
+        d   = getFieldInt 12 2 bs
+        h   = getFieldInt 15 2 bs
+        m   = getFieldInt 18 2 bs
+        s   = getFieldInt 21 2 bs
   
-  let toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
+        toc = mkGpsTime (toInteger y) mon d h m (fromIntegral s)
+             
+        af0 = getFieldDouble 23 19 bs
+        af1 = getFieldDouble 42 19 bs
+        af2 = getFieldDouble 61 19 bs
             
-  af0       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  af1       <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  af2       <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((prn, toc, af0, af1, af2), dropLine80 bs)
+  in ((prn, toc, af0, af1, af2), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine2Data :: L8.ByteString  -> Maybe ((Double, Double, Double), L8.ByteString)
-readLine2Data bs = do
-  crs       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  deltaN    <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  m0        <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((crs, deltaN, m0), dropLine80 bs)
+readFromLine2 :: S8.ByteString  -> ((Double, Double, Double), S8.ByteString)
+readFromLine2 bs =
+    let
+        crs    = getFieldDouble 23 19 bs
+        deltaN = getFieldDouble 42 19 bs
+        m0     = getFieldDouble 61 19 bs
+                 
+    in ((crs, deltaN, m0), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine3Data :: L8.ByteString  -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine3Data bs = do
-  cuc       <- getDouble $ L8.dropSpace $ takeField  4 19 bs
-  e         <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  cus       <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  sqrtA     <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((cuc, e, cus, sqrtA), dropLine80 bs)
+readFromLine3 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readFromLine3 bs =
+    let
+        cuc   = getFieldDouble  4 19 bs
+        e     = getFieldDouble 23 19 bs
+        cus   = getFieldDouble 42 19 bs
+        sqrtA = getFieldDouble 61 19 bs
+                
+    in ((cuc, e, cus, sqrtA), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine4Data :: L8.ByteString  -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine4Data bs = do
-  toe       <- getDouble $ L8.dropSpace $ takeField  4 19 bs
-  cic       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  omega0    <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  cis       <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((toe, cic, omega0, cis), dropLine80 bs)
+readFromLine4 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readFromLine4 bs =
+    let
+        toe    = getFieldDouble  4 19 bs
+        cic    = getFieldDouble 23 19 bs
+        omega0 = getFieldDouble 42 19 bs
+        cis    = getFieldDouble 61 19 bs
+                 
+    in ((toe, cic, omega0, cis), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine5Data :: L8.ByteString  -> Maybe ((Double, Double, Double, Double), L8.ByteString)
-readLine5Data bs = do
-  i0        <- getDouble $ L8.dropSpace $ takeField  4 19 bs
-  crc       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  omega     <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  omegaDot  <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((i0, crc, omega, omegaDot), dropLine80 bs)
+readFromLine5 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readFromLine5 bs =
+    let
+        i0       = getFieldDouble  4 19 bs
+        crc      = getFieldDouble 23 19 bs
+        omega    = getFieldDouble 42 19 bs
+        omegaDot = getFieldDouble 61 19 bs
+                   
+    in ((i0, crc, omega, omegaDot), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine6Data :: L8.ByteString  -> Maybe ((Double, Double), L8.ByteString)
-readLine6Data bs = do
-  iDot      <- getDouble $ L8.dropSpace $ takeField  4 19 bs
-  weekD     <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  return ((iDot, weekD), dropLine80 bs)
+readFromLine6 :: S8.ByteString  -> ((Double, Double), S8.ByteString)
+readFromLine6 bs =
+    let
+        iDot  = getFieldDouble  4 19 bs
+        weekD = getFieldDouble 42 19 bs
+                
+    in ((iDot, weekD), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
-readLine8Data :: L8.ByteString  -> Maybe ((Double), L8.ByteString)
-readLine8Data bs = do
-  fitIntervalD  <- getDouble $ L8.dropSpace $ takeField 23 19 bs
-  return ((fitIntervalD), dropLastLine bs)
+readFromLine8 :: S8.ByteString  -> ((Double), S8.ByteString)
+readFromLine8 bs =
+    let
+        fitIntervalD = getFieldDouble 23 19 bs
+                       
+    in ((fitIntervalD), dropLastLine bs)
+       
     where
-      dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
+      dropLastLine =  snd . readEOL . snd . S8.break (`S8.elem` "\r\n") . S8.drop 42
       
 ----------------------------------------------------------------------
 
-dropLine80 :: L8.ByteString -> L8.ByteString
-dropLine80     =  snd . readEOL . L8.drop 80
+dropLine80 :: S8.ByteString -> S8.ByteString
+dropLine80     =  snd . readEOL . S8.drop 80
 
 ----------------------------------------------------------------------
                       
-readEOL :: L8.ByteString -> (L8.ByteString, L8.ByteString)
+readEOL :: S8.ByteString -> (S8.ByteString, S8.ByteString)
 readEOL bs =
-    case L8.uncons bs of
+    case S8.uncons bs of
       Just ('\n', rest)  -> ("\n", rest)
-      Just ('\r', rest1) -> case L8.uncons rest1 of
+      Just ('\r', rest1) -> case S8.uncons rest1 of
                               Just ('\n', rest2) -> ("\r\n", rest2)
                               _                  -> ("\r"  , rest1)
       _                  -> error "Cannot find end of line."
+
+----------------------------------------------------------------------
+
+-- | Function import: double strtod(const char *nptr, char **endptr)
+foreign import ccall unsafe "stdlib.h strtod"
+    c_strtod :: CString -> Ptr (Ptr CChar) -> IO CDouble
+
+-- | 2025-11-01 Data.ByteString.Char8 does not have a readDouble function.
+--   Reads Double value from Char8 ByteString.
+readDouble :: S8.ByteString -> Maybe (Double, S8.ByteString)
+readDouble bs = unsafePerformIO $
+    BSU.unsafeUseAsCString bs $ \cstr -> 
+      alloca $ \endPtr -> do
+        val <- c_strtod cstr endPtr
+        end <- peek endPtr
+        if end == cstr
+          then return Nothing
+          else do
+            let offset = end `minusPtr` cstr
+            let rest   = S8.drop offset bs
+            return (Just (realToFrac val, rest))
+
+----------------------------------------------------------------------
+
+-- | Get Double value from ByteString field.
+getFieldDouble
+    :: Int                              -- ^ start position of field
+    -> Int                              -- ^ length of field
+    -> S8.ByteString                    
+    -> Double
+getFieldDouble start len bs = do
+  case readDouble (S8.strip f) of
+    Just (val, rest)
+      | S8.null rest -> val
+    _                -> error $ unwords
+                           [ "\nCannot read Double from field at pos = ", show start
+                           , " length = ", show len
+                           , " field = ", show f
+                           , "\nLine: ", show $ S8.takeWhile (not . (`S8.elem` "\n\r")) bs
+                           ]
+  where
+      f = takeField start len bs
+
+----------------------------------------------------------------------
+
+-- | Get Int value from ByteString field.
+getFieldInt
+    :: Int                              -- ^ start position of field
+    -> Int                              -- ^ length of field
+    -> S8.ByteString                    
+    -> Int
+getFieldInt start len bs = do
+  case S8.readInt (S8.strip f) of
+    Just (val, rest)
+      | S8.null rest -> val
+    _                -> error $ unwords
+                           [ "\nCannot read Int from field at pos = ", show start
+                           , " length = ", show len
+                           , " field = ", show f
+                           , "\nLine: ", show $ S8.takeWhile (not . (`S8.elem` "\n\r")) bs
+                           ]
+  where
+      f = takeField start len bs
+
+----------------------------------------------------------------------
+          
+takeField :: Int -> Int -> S8.ByteString -> S8.ByteString
+takeField start len = S8.take len . S8.drop start
 
 ----------------------------------------------------------------------
 
@@ -545,8 +568,8 @@ main = do
       ps1  = 21548635.724                                   -- Input: pseudorange for f1 e.g. C1C
       ps2  = 21548628.027                                   -- Input: pseudorange for f2 e.g. C2X
       fn   = "nav_record.txt"                               -- Input: file name
-  bs <- L8.readFile fn                                      -- bytestring from "nav_record.txt"
-  if L8.take 1 bs == "G"
+  bs <- S8.readFile fn                                      -- bytestring from "nav_record.txt"
+  if S8.take 1 bs == "G"
   then do
       let (r, _) = readRecord bs
           (wtt, (x,y,z)) = satPosForDfPs tobs ps1 ps2 r     -- Output: signal transmission time by GPS clock,
