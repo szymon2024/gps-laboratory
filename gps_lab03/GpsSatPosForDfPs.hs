@@ -57,8 +57,12 @@
      Z = 19845264.366251267
 -}
 
+----------------------------------------------------------------------
+
 {-# LANGUAGE RecordWildCards #-}               -- to use Ephemeris {..}
 {-# LANGUAGE OverloadedStrings #-}
+
+----------------------------------------------------------------------
 
 import           Data.Time.Calendar            (fromGregorian, diffDays, addDays)
 import           Data.Time.LocalTime           (LocalTime (..), TimeOfDay(..))
@@ -74,6 +78,7 @@ import           Foreign.C.Types               (CChar, CDouble(CDouble))
 import           Foreign.C.String              (CString)
 import           System.IO.Unsafe              (unsafePerformIO)
 
+----------------------------------------------------------------------    
 
 -- | GPS navigation record (a subset of fields from RINEX 3.04 navigation file)
 data NavRecord = NavRecord
@@ -230,9 +235,9 @@ clkCorr (w, tow) NavRecord{..} = realToFrac (af0 + af1*dt + af2*dt^(2::Int))
 
 ----------------------------------------------------------------------
 
--- | Iteratively compute signal transmission time because the transmission
---   time depends on the clock corrections and the clock corrections
---   depend on the transmission time.
+-- | Iteratively compute signal transmission time because the
+--   transmission time depends on the clock corrections and the clock
+--   corrections depend on the transmission time.
 transmissionTime            
   :: Double                                                 -- ^ pseudorange ps1 [m]
   -> Double                                                 -- ^ pseudorange ps2 [m]
@@ -362,7 +367,7 @@ readRecord bs =
               Just d  -> d
               Nothing -> error "Cannot read sixth line of record."
 
-        bs7 = dropLine bs6                        -- skip seventh line        
+        bs7 = dropLine80 bs6                        -- skip seventh line        
               
         ((fitIntervalD), bs8)             =
             case readLine8Data bs7 of
@@ -392,7 +397,7 @@ readLine1Data bs = do
   af0       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   af1       <- getDouble $ L8.dropSpace $ takeField 42 19 bs
   af2       <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((prn, toc, af0, af1, af2), dropLine bs)
+  return ((prn, toc, af0, af1, af2), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -401,7 +406,7 @@ readLine2Data bs = do
   crs       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   deltaN    <- getDouble $ L8.dropSpace $ takeField 42 19 bs
   m0        <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((crs, deltaN, m0), dropLine bs)
+  return ((crs, deltaN, m0), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -411,7 +416,7 @@ readLine3Data bs = do
   e         <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   cus       <- getDouble $ L8.dropSpace $ takeField 42 19 bs
   sqrtA     <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((cuc, e, cus, sqrtA), dropLine bs)
+  return ((cuc, e, cus, sqrtA), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -421,7 +426,7 @@ readLine4Data bs = do
   cic       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   omega0    <- getDouble $ L8.dropSpace $ takeField 42 19 bs
   cis       <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((toe, cic, omega0, cis), dropLine bs)
+  return ((toe, cic, omega0, cis), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -431,7 +436,7 @@ readLine5Data bs = do
   crc       <- getDouble $ L8.dropSpace $ takeField 23 19 bs
   omega     <- getDouble $ L8.dropSpace $ takeField 42 19 bs
   omegaDot  <- getDouble $ L8.dropSpace $ takeField 61 19 bs
-  return ((i0, crc, omega, omegaDot), dropLine bs)
+  return ((i0, crc, omega, omegaDot), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -439,7 +444,7 @@ readLine6Data :: L8.ByteString  -> Maybe ((Double, Double), L8.ByteString)
 readLine6Data bs = do
   iDot      <- getDouble $ L8.dropSpace $ takeField  4 19 bs
   weekD     <- getDouble $ L8.dropSpace $ takeField 42 19 bs
-  return ((iDot, weekD), dropLine bs)
+  return ((iDot, weekD), dropLine80 bs)
 
 ----------------------------------------------------------------------
          
@@ -452,8 +457,8 @@ readLine8Data bs = do
       
 ----------------------------------------------------------------------
 
-dropLine :: L8.ByteString -> L8.ByteString
-dropLine     =  snd . readEOL . L8.drop 80
+dropLine80 :: L8.ByteString -> L8.ByteString
+dropLine80     =  snd . readEOL . L8.drop 80
 
 ----------------------------------------------------------------------
                       
