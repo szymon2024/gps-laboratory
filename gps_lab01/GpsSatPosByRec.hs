@@ -1,4 +1,4 @@
--- 2025-12-25
+-- 2026-01-14
 
 {- | The program for computing the position of a GPS satellite in the
      ECEF coordinate system based on sample orbital parameters
@@ -47,12 +47,16 @@
      Z =  7260529.645377433
 -}
 
+----------------------------------------------------------------------
+
 import Data.Time.Calendar  (fromGregorian, diffDays, addDays)
 import Data.Time.LocalTime (LocalTime (..), TimeOfDay(..))
 import Text.Printf         (printf)
 import Data.Fixed          (Pico)
 import Data.Time           (diffLocalTime)
 import Data.Time.Format
+
+----------------------------------------------------------------------
 
 -- | GPS ephemeris
 data Ephemeris = Ephemeris
@@ -78,10 +82,14 @@ data Ephemeris = Ephemeris
 type GpsTime    = LocalTime
 type GpsWeekTow = (Integer, Pico)
 
+----------------------------------------------------------------------
+
 -- | Constants
 mu, omegaEDot :: Double
 mu        = 3.986005e14           -- WGS 84 value of earth's universal gravitational constant [m^3/s^2]
 omegaEDot = 7.2921151467e-5       -- WGS 84 value of the earth's rotation rate [rad/s]
+
+----------------------------------------------------------------------
 
 -- | Computation of the GPS satellite position in ECEF from the GPS
 --   ephemeris and for a GPS time-of-week based on IS-GPS-200N
@@ -119,7 +127,9 @@ satPosECEF tow eph =
         yk     = xk' * sin omegak + yk' * cos ik * cos omegak    -- transformation to ECEF               
         zk     =                    yk' * sin ik                 -- transformation to ECEF
     in (xk,yk,zk)
-    
+
+----------------------------------------------------------------------
+
 -- | Iterative solution of Kepler's equation ek = m + e sin ek
 --   (Newton-Raphson method)
 keplerSolve    
@@ -140,6 +150,8 @@ keplerSolve m e = loop e0 0
             fDot  =  1 - e * cos eN                         -- derivative of the function f
 
 
+----------------------------------------------------------------------
+
 -- | Calculates the correct number of seconds between two GPS tows
 --   without week numbers.  Formula based on IS-GPS-200N
 --   20.3.3.4.3. page 106.  Takes into account cases where tows are in
@@ -157,6 +169,8 @@ wrapWeekCrossover dt
   | dt < -302400.0 = dt + 604800.0                          -- tow in adjacent week and later then toe
   | otherwise      = dt                                     -- tow and toe in the same week
 
+----------------------------------------------------------------------
+
 -- | Conversion of GPS time to GPS week and time-of-week
 gpsTimeToWeekTow
     :: GpsTime
@@ -170,6 +184,8 @@ gpsTimeToWeekTow (LocalTime date (TimeOfDay h m s)) =
                                     )
                      + s
     in (w, tow)
+
+----------------------------------------------------------------------
 
 -- | Converts GPS week and time-of-week (tow) into GPS time
 weekTowToGpsTime
@@ -186,6 +202,8 @@ weekTowToGpsTime (w, tow) =
         s            = fromIntegral sInt + towFrac
     in LocalTime date (TimeOfDay (fromInteger h) (fromInteger m) s)      
 
+----------------------------------------------------------------------
+
 -- | Calculates the number of seconds between two (GPS week, tow).
 diffGpsWeekTow
     :: GpsWeekTow                                           -- ^ GPS week, time-of-week
@@ -196,6 +214,8 @@ diffGpsWeekTow (w2,tow2) (w1,tow1) =
     where
       dw   = w2   - w1
       dtow = tow2 - tow1
+
+----------------------------------------------------------------------
 
 -- | Ephemeris validity check for given (w, tow).  Checks if (w, tow)
 --   is in half of interval since (week, toe).
@@ -209,7 +229,9 @@ isEphemerisValid (w, tow) fitInterval eph =
     where
       diffTime = diffGpsWeekTow  (w, tow) (week eph, toe eph)
       halfFitInterval = fromIntegral ((fitInterval `div` 2) * 3600)
-      
+
+----------------------------------------------------------------------
+
 -- | Determining the GPS satellite position by receiver in ECEF:
 --   - checks possible curve fit interval values according to 20.3.4.4
 --     IS-GPS-200N.     
@@ -238,9 +260,13 @@ satPosByRec t eph curveFitInterval
     | otherwise  =
         error "Curve fit interval must be one of [4,6,8,14,26]"
 
+----------------------------------------------------------------------
+
 -- | Makes GpsTime from numbers.
 mkGpsTime :: Integer -> Int -> Int -> Int -> Int -> Pico -> GpsTime
 mkGpsTime y mon d h m s = LocalTime (fromGregorian y mon d) (TimeOfDay h m s)
+
+----------------------------------------------------------------------
 
 -- | Ephemeris example
 ephExample :: Ephemeris
@@ -263,6 +289,8 @@ ephExample = Ephemeris
           , iDot     =  2.60367988229e-10
           , week     =  2304
           }
+
+----------------------------------------------------------------------
 
 -- Calculates GPS satelite position for example GPS ephemeris and GPS
 -- time. An ephemeris is a record of initial orbital parameters. The
@@ -290,4 +318,3 @@ main = do
   printf "X = %18.9f\n" x
   printf "Y = %18.9f\n" y
   printf "Z = %18.9f\n" z
-
