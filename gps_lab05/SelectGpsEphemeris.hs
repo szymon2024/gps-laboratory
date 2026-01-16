@@ -1,4 +1,4 @@
--- 2026-01-14
+-- 2026-01-16
 
 {- | The program selects a navigation record containing ephemeris from
      the RINEX 3.04 navigation file for a given GPS observation time
@@ -217,23 +217,23 @@ navMapFromRinex bs0
         go :: NavMap -> L8.ByteString -> NavMap
         go m bs
           | L8.null bs = m
-          | first == "G" =
+          | sys == "G" =
               let (r, bs') = readGpsNavRecord bs
                   m' | svHealth r == 0 = insertNavRecord r m
                      | otherwise       =  m
               in go m' bs' 
-          | first == "E" = go m (dropGalileoNavRecord bs)
-          | first == "R" = go m (dropGlonassNavRecord bs)
-          | first == "J" = go m (dropQZSSNavRecord bs)
-          | first == "C" = go m (dropBDSNavRecord bs)
-          | first == "S" = go m (dropSBASNavRecord bs)
-          | first == "I" = go m (dropIRNSSNavRecord bs)
+          | sys == "R" = go m (dropGlonassNavRecord bs)
+          | sys == "E" = go m (dropGalileoNavRecord bs)
+          | sys == "J" = go m (dropQZSSNavRecord    bs)
+          | sys == "C" = go m (dropBDSNavRecord     bs)
+          | sys == "I" = go m (dropIRNSSNavRecord   bs)                         
+          | sys == "S" = go m (dropSBASNavRecord    bs)
           | otherwise    = error $
                            "Unexpected char at the beginning \
                            \of the line starting with \"" ++
                             L8.unpack (L8.take 30 bs) ++ "\"."
           where
-            first = L8.take 1 bs
+            sys = L8.take 1 bs
 
 ----------------------------------------------------------------------
 
@@ -244,7 +244,8 @@ navMapFromRinex bs0
 --    - label field 60-79.
 --   The function cannot use the RINEX 3.04 specification knowledge
 --   that the width of a line should always be 80 characters, because
---   last line sometimes breaks this rule.
+--   last line sometimes breaks this rule and ends after END OF
+--   HEADER.
 dropRnxHeader :: L8.ByteString -> L8.ByteString
 dropRnxHeader bs0
     | L8.null bs0             = error
@@ -303,7 +304,7 @@ readLine1NavData
     -> ((Int, GpsTime, Double, Double, Double), L8.ByteString)
 readLine1NavData bs =
     let
-        prn  = getFieldInt  1 2 bs       -- dropSpace is needed by readInt
+        prn  = getFieldInt  1 2 bs
         y    = getFieldInt  4 4 bs
         mon  = getFieldInt  9 2 bs
         d    = getFieldInt 12 2 bs
@@ -479,12 +480,12 @@ dropIRNSSNavRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
       
 ----------------------------------------------------------------------
 
--- | Insert a navigation record into a 'NavMap'.
--- If there is no entry for the given PRN or (week, toe), the record is
--- inserted. If an entry already exists, the record is replaced only
--- if the new record has a greater IODE than the existing one.
--- This ensures that for each (week, toe) only the navigation
--- record with the maximum IODE is kept.
+-- | Insert a navigation record into a 'NavMap'. If there is no entry
+--   for the given PRN or (week, toe), the record is inserted. If an
+--   entry already exists, the record is replaced only if the new
+--   record has a greater IODE than the existing one.  This ensures
+--   that for each (week, toe) only the navigation record with the
+--   maximum IODE is kept.
 insertNavRecord :: NavRecord -> NavMap -> NavMap
 insertNavRecord r =
   IntMap.alter updatePrn key1
