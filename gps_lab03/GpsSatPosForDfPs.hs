@@ -1,4 +1,4 @@
--- 2026-01-14
+-- 2026-01-18
 
 {- | Estimate ECEF satellite position for dual-frequency pseudorange
      observation (measurement) from single navigation record.  The
@@ -408,8 +408,12 @@ readFromLine8 bs =
     in ((fitIntervalD), dropLastLine bs)
        
     where
-      dropLastLine =  snd . readEOL . snd . S8.break (`S8.elem` "\r\n") . S8.drop 42
-      
+      dropLastLine =  snd . readEOL .  dropToEOL . S8.drop 42
+
+----------------------------------------------------------------------                      
+                      
+dropToEOL = S8.dropWhile (not . (`S8.elem` "\n\r"))
+
 ----------------------------------------------------------------------
 
 dropLine80 :: S8.ByteString -> S8.ByteString
