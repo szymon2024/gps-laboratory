@@ -1,4 +1,4 @@
--- 2026-01-16
+-- 2026-01-18
 
 {- | The program selects a navigation record containing ephemeris from
      the RINEX 3.04 navigation file for a given GPS observation time
@@ -263,7 +263,7 @@ dropRnxHeader bs0
 
       lookEOH = (== "END OF HEADER") . L8.take 13 . dropSpace . L8.drop 60
 
-      dropLastLine =  snd . readEOL . L8.dropWhile (not . (`L8.elem` "\r\n")) . L8.drop 73
+      dropLastLine =  snd . readEOL . dropToEOL . L8.drop 73
                     
       rnxVer      = trim . takeField  0 9
 
@@ -272,21 +272,21 @@ dropRnxHeader bs0
 -- | Read GPS satellite navigation record
 readGpsNavRecord :: L8.ByteString -> (NavRecord, L8.ByteString)
 readGpsNavRecord bs =
-    let ((prn, toc, af0, af1, af2), bs1)  = readLine1NavData bs
+    let ((prn, toc, af0, af1, af2), bs1)  = readLine1NavRecord bs
               
-        ((iodeD, crs, deltaN, m0), bs2)   = readLine2NavData bs1
+        ((iodeD, crs, deltaN, m0), bs2)   = readLine2NavRecord bs1
               
-        ((cuc, e, cus, sqrtA), bs3)       = readLine3NavData bs2
+        ((cuc, e, cus, sqrtA), bs3)       = readLine3NavRecord bs2
               
-        ((toeD, cic, omega0, cis), bs4)   = readLine4NavData bs3
+        ((toeD, cic, omega0, cis), bs4)   = readLine4NavRecord bs3
               
-        ((i0, crc, omega, omegaDot), bs5) = readLine5NavData bs4
+        ((i0, crc, omega, omegaDot), bs5) = readLine5NavRecord bs4
               
-        ((iDot, weekD), bs6)              = readLine6NavData bs5
+        ((iDot, weekD), bs6)              = readLine6NavRecord bs5
 
-        ((svHealthD, iodcD), bs7)         = readLine7NavData bs6
+        ((svHealthD, iodcD), bs7)         = readLine7NavRecord bs6
               
-        ((ttom, fitIntervalD), bs8)       = readLine8NavData bs7
+        ((ttom, fitIntervalD), bs8)       = readLine8NavRecord bs7
 
         iode         = round      iodeD
         toe          = realToFrac toeD
@@ -299,10 +299,10 @@ readGpsNavRecord bs =
 
 ----------------------------------------------------------------------
                             
-readLine1NavData
+readLine1NavRecord
     :: L8.ByteString
     -> ((Int, GpsTime, Double, Double, Double), L8.ByteString)
-readLine1NavData bs =
+readLine1NavRecord bs =
     let
         prn  = getFieldInt  1 2 bs
         y    = getFieldInt  4 4 bs
@@ -322,10 +322,10 @@ readLine1NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine2NavData
+readLine2NavRecord
     :: L8.ByteString
     -> ((Double, Double, Double, Double), L8.ByteString)
-readLine2NavData bs =
+readLine2NavRecord bs =
     let
         iode      = getFieldDouble  4 19 bs
         crs       = getFieldDouble 23 19 bs
@@ -336,10 +336,10 @@ readLine2NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine3NavData
+readLine3NavRecord
     :: L8.ByteString
     -> ((Double, Double, Double, Double), L8.ByteString)
-readLine3NavData bs =
+readLine3NavRecord bs =
     let
         cuc       = getFieldDouble  4 19 bs
         e         = getFieldDouble 23 19 bs
@@ -350,10 +350,10 @@ readLine3NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine4NavData
+readLine4NavRecord
     :: L8.ByteString
     -> ((Double, Double, Double, Double), L8.ByteString)
-readLine4NavData bs =
+readLine4NavRecord bs =
     let
         toe       = getFieldDouble  4 19 bs
         cic       = getFieldDouble 23 19 bs
@@ -363,10 +363,10 @@ readLine4NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine5NavData
+readLine5NavRecord
     :: L8.ByteString
     -> ((Double, Double, Double, Double), L8.ByteString)
-readLine5NavData bs =
+readLine5NavRecord bs =
     let
         i0        = getFieldDouble  4 19 bs
         crc       = getFieldDouble 23 19 bs
@@ -377,10 +377,10 @@ readLine5NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine6NavData
+readLine6NavRecord
     :: L8.ByteString
     -> ((Double, Double), L8.ByteString)
-readLine6NavData bs =
+readLine6NavRecord bs =
     let
         iDot      = getFieldDouble  4 19 bs
         weekD     = getFieldDouble 42 19 bs
@@ -389,10 +389,10 @@ readLine6NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine7NavData
+readLine7NavRecord
     :: L8.ByteString
     -> ((Double, Double), L8.ByteString)
-readLine7NavData bs =
+readLine7NavRecord bs =
     let
         svHealthD  = getFieldDouble 23 19 bs
         iodc       = getFieldDouble 61 19 bs
@@ -401,10 +401,10 @@ readLine7NavData bs =
 
 ----------------------------------------------------------------------
          
-readLine8NavData
+readLine8NavRecord
     :: L8.ByteString
     -> ((Double, Double), L8.ByteString)
-readLine8NavData bs =
+readLine8NavRecord bs =
     let
         ttom          = getFieldDouble  4 19 bs
         fitIntervalD  = getFieldDouble 23 19 bs
@@ -412,7 +412,11 @@ readLine8NavData bs =
     in ((ttom, fitIntervalD), dropLastLine bs)
        
     where
-      dropLastLine =  snd . readEOL . snd . L8.break (`L8.elem` "\r\n") . L8.drop 42
+      dropLastLine =  snd . readEOL . dropToEOL . L8.drop 42
+
+----------------------------------------------------------------------                      
+                      
+dropToEOL = L8.dropWhile (not . (`L8.elem` "\n\r"))                      
       
 ----------------------------------------------------------------------
 
