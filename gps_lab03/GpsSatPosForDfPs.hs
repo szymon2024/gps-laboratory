@@ -298,21 +298,21 @@ mkGpsTime y mon d h m s = LocalTime (fromGregorian y mon d) (TimeOfDay h m s)
 readRecord :: S8.ByteString -> (NavRecord, S8.ByteString)
 readRecord bs =
     let
-        ((prn, toc, af0, af1, af2), bs1)  = readFromLine1 bs
+        ((prn, toc, af0, af1, af2), bs1)  = readSVLine bs
               
-        ((crs, deltaN, m0), bs2)          = readFromLine2 bs1
+        ((crs, deltaN, m0), bs2)          = readBroadcastOrbit1 bs1
               
-        ((cuc, e, cus, sqrtA), bs3)       = readFromLine3 bs2
+        ((cuc, e, cus, sqrtA), bs3)       = readBroadcastOrbit2 bs2
               
-        ((toeD, cic, omega0, cis), bs4)   = readFromLine4 bs3
+        ((toeD, cic, omega0, cis), bs4)   = readBroadcastOrbit3 bs3
               
-        ((i0, crc, omega, omegaDot), bs5) = readFromLine5 bs4
+        ((i0, crc, omega, omegaDot), bs5) = readBroadcastOrbit4 bs4
               
-        ((iDot, weekD), bs6)              = readFromLine6 bs5
+        ((iDot, weekD), bs6)              = readBroadcastOrbit5 bs5
 
         bs7 = dropLine80 bs6                        -- skip seventh line        
               
-        ((fitIntervalD), bs8)             = readFromLine8 bs7
+        ((fitIntervalD), bs8)             = readBroadcastOrbit7 bs7
 
         toe          = realToFrac toeD
         week         = round      weekD           -- conversion is needed for equality comparisons
@@ -322,8 +322,8 @@ readRecord bs =
        
 ----------------------------------------------------------------------
                             
-readFromLine1 :: S8.ByteString  -> ((Int, GpsTime, Double, Double, Double), S8.ByteString)
-readFromLine1 bs =
+readSVLine :: S8.ByteString  -> ((Int, GpsTime, Double, Double, Double), S8.ByteString)
+readSVLine bs =
     let
         prn = getFieldInt  1 2 bs       -- S8.strip is needed by readInt
         y   = getFieldInt  4 4 bs
@@ -343,8 +343,8 @@ readFromLine1 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine2 :: S8.ByteString  -> ((Double, Double, Double), S8.ByteString)
-readFromLine2 bs =
+readBroadcastOrbit1 :: S8.ByteString  -> ((Double, Double, Double), S8.ByteString)
+readBroadcastOrbit1 bs =
     let
         crs    = getFieldDouble 23 19 bs
         deltaN = getFieldDouble 42 19 bs
@@ -354,8 +354,8 @@ readFromLine2 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine3 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
-readFromLine3 bs =
+readBroadcastOrbit2 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readBroadcastOrbit2 bs =
     let
         cuc   = getFieldDouble  4 19 bs
         e     = getFieldDouble 23 19 bs
@@ -366,8 +366,8 @@ readFromLine3 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine4 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
-readFromLine4 bs =
+readBroadcastOrbit3 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readBroadcastOrbit3 bs =
     let
         toe    = getFieldDouble  4 19 bs
         cic    = getFieldDouble 23 19 bs
@@ -378,8 +378,8 @@ readFromLine4 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine5 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
-readFromLine5 bs =
+readBroadcastOrbit4 :: S8.ByteString  -> ((Double, Double, Double, Double), S8.ByteString)
+readBroadcastOrbit4 bs =
     let
         i0       = getFieldDouble  4 19 bs
         crc      = getFieldDouble 23 19 bs
@@ -390,8 +390,8 @@ readFromLine5 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine6 :: S8.ByteString  -> ((Double, Double), S8.ByteString)
-readFromLine6 bs =
+readBroadcastOrbit5 :: S8.ByteString  -> ((Double, Double), S8.ByteString)
+readBroadcastOrbit5 bs =
     let
         iDot  = getFieldDouble  4 19 bs
         weekD = getFieldDouble 42 19 bs
@@ -400,8 +400,8 @@ readFromLine6 bs =
 
 ----------------------------------------------------------------------
          
-readFromLine8 :: S8.ByteString  -> ((Double), S8.ByteString)
-readFromLine8 bs =
+readBroadcastOrbit7 :: S8.ByteString  -> ((Double), S8.ByteString)
+readBroadcastOrbit7 bs =
     let
         fitIntervalD = getFieldDouble 23 19 bs
                        
