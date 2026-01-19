@@ -1,4 +1,4 @@
--- 2026-01-18
+-- 2026-01-19
 
 {- | The program selects a navigation record containing ephemeris from
      the RINEX 3.04 navigation file for a given GPS observation time
@@ -440,7 +440,7 @@ dropGalileoNavRecord :: L8.ByteString -> L8.ByteString
 dropGalileoNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
-      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 23
+      dropLastLine = snd .readEOL . dropToEOL . L8.drop 23
       
 ----------------------------------------------------------------------
 
@@ -455,7 +455,7 @@ dropQZSSNavRecord :: L8.ByteString -> L8.ByteString
 dropQZSSNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
-      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
+      dropLastLine = snd .readEOL . dropToEOL . L8.drop 42
 
 ----------------------------------------------------------------------
                      
@@ -463,7 +463,7 @@ dropBDSNavRecord :: L8.ByteString -> L8.ByteString
 dropBDSNavRecord = dropLastLine . drop7Lines
     where
       drop7Lines  bs = iterate dropLine80 bs !! 7
-      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 42
+      dropLastLine = snd .readEOL . dropToEOL . L8.drop 42
       
 ----------------------------------------------------------------------
 
@@ -478,9 +478,9 @@ dropIRNSSNavRecord :: L8.ByteString -> L8.ByteString
 dropIRNSSNavRecord = dropLastLine . drop7Line . drop6Line . drop5Lines
     where
       drop5Lines  bs = iterate dropLine80 bs !! 5
-      drop6Line    = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 61
-      drop7Line    = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 61
-      dropLastLine = snd .readEOL . L8.dropWhile (not . (`L8.elem` "\n\r")) . L8.drop 23
+      drop6Line    = snd .readEOL . dropToEOL . L8.drop 61
+      drop7Line    = snd .readEOL . dropToEOL . L8.drop 61
+      dropLastLine = snd .readEOL . dropToEOL . L8.drop 23
       
 ----------------------------------------------------------------------
 
