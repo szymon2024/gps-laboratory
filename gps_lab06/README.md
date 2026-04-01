@@ -1,6 +1,6 @@
-2025-12-27
+2026-04-01
 
-EN:
+EN
 =====================================================================
   ATTACHING NAVIGATION RECORDS TO GPS SATELLITE OBSERVATIONS
 =====================================================================
@@ -28,7 +28,7 @@ Number of observations
 without attached ephemerides:      0
 ```
 
-PL:
+PL
 =====================================================================
   DOŁĄCZENIE REKORDÓW NAWIGACYJNYCH DO OBSERWACJI SATELITARNYCH GPS
 =====================================================================
