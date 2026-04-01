@@ -1,4 +1,4 @@
--- 2025-12-27
+-- 2026-04-01
 
 {- | The program creates sky plot of computed GPS satellites
    trajectories from RINEX 3.04 navigation file. A sky plot is polar
@@ -49,14 +49,17 @@
    4. Convert the ENU vector to azimuth and elevation angles (enuToAzEl  
    function).
 
-   NOTE: Increasing the step size will cause trajectories ending close
+   NOTE 1: Increasing the step size will cause trajectories ending close
    to elevation 0° to deviate further from the edge of grid 0° because
    the program does not compute a point for elevation 0.
-                                                                        
+
+   NOTE 2: The Sagnac correction is not applied because its result is
+   too small to be visible on the graph.
+
    This project was developed with assistance from Microsoft Copilot.
 
    Input (to modify directly in the source code):
-     - ECEF coordinates of observer position                obsECEF
+     - ECEF coordinates of observer position                obsPosECEF
      - rinex navigation file name                           fn
      - filter by satellite prn                              prnFilter
      - plot title                                           title
@@ -147,14 +150,14 @@ type Interval = (GpsWeekTow, GpsWeekTow)   -- ^ Time interval between two (GPS w
 main :: IO ()
 main = do
   let
-      obsECEF = (3730927.8332,1134193.6047,5030402.1250)    -- Input: ECEF coordinates of observer position
+      obsPosECEF = (3730927.8332,1134193.6047,5030402.1250) -- Input: ECEF coordinates of observer position
       fn = "rinex.nav"                                      -- Input: rinex navigation file name
   bs <- L8.readFile fn
   let
       navMap    = navMapFromRinex bs
       prnfilter = \prn _ -> prn >=1 && prn <=32             -- Input: filter by satellite prn
       step      = 90::Pico                                  -- [s] 
-      skyMap    = skyPoints obsECEF step
+      skyMap    = skyPoints obsPosECEF step
                     (IMS.filterWithKey prnfilter navMap)
       title  = "Sky Plot of GPS Satellite \
                 \Trajectories from the " <> T.pack fn       -- Input: title of plot
@@ -463,11 +466,11 @@ skyIntervalPoints
   -> Pico
   -> ECEF
   -> [AzEl]
-skyIntervalPoints (i, r) step obsECEF =
+skyIntervalPoints (i, r) step obsPosECEF =
   [ enuToAzEl enu
   | t   <- genSampleTimes i step                             -- sample time
   , let enu@(_, _, u) =
-            ecefVectorToENU (satPosECEF t r) obsECEF
+            ecefVectorToENU (satPosECEF t r) obsPosECEF
   , u > 0
   ]
 
@@ -480,10 +483,10 @@ skyPrnPoints
   -> Pico
   -> Map EphWeekTow NavRecord
   -> [([AzEl], NavRecord)]
-skyPrnPoints obsECEF step prnMap =
+skyPrnPoints obsPosECEF step prnMap =
   [ (pts, r)
   | (i, r) <- trimmOverlapingIntervals $ MS.elems prnMap
-  , let pts = skyIntervalPoints (i, r) step obsECEF
+  , let pts = skyIntervalPoints (i, r) step obsPosECEF
   ]
 
 -- | Compute points (azimuth, elevation) for satellite ephemerides
@@ -493,8 +496,8 @@ skyPoints
   -> Pico
   -> NavMap
   -> IntMap [([AzEl],NavRecord)]
-skyPoints  obsECEF step =
-  IMS.map (skyPrnPoints obsECEF step)
+skyPoints  obsPosECEF step =
+  IMS.map (skyPrnPoints obsPosECEF step)
            
 -- | Calculate azimuth and elevation from ENU vector.
 enuToAzEl :: ENU -> AzEl
@@ -508,7 +511,8 @@ enuToAzEl (e, n, u) = (azDeg, elDeg)
     elDeg =  el * 180 / pi
 
 
--- | Calculate observer -> satellite ECEF vector and transform it to ENU
+-- | Calculate observer -> satellite ECEF vector and transform it to
+--   ENU.
 ecefVectorToENU
     :: ECEF                             -- ^ Satellite ECEF coordinates
     -> ECEF                             -- ^ Observer  ECEF coordinates
