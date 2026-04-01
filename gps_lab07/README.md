@@ -1,6 +1,6 @@
 2026-04-01
 
-EN:
+EN
 ======================================================================
 SKY PLOT OF GPS SATELLITE TRAJECTORIES FROM RINEX 3.04 NAVIGATION FILE
 ======================================================================
@@ -34,7 +34,7 @@ Output
   ![navigation sky plot example](navSkyplot.svg)
 
 
-PL:
+PL
 ======================================================================
   WYKRES NIEBA Z TRAJEKTORIAMI SATELITÓW GPS Z PLIKU NAWIGACYJNEGO
   RINEX 3.04
