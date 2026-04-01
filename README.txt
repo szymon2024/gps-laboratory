@@ -1,6 +1,6 @@
-2026-01-20
+2026-04-01
 
-EN:
+EN
 CONTENTS
 --------
 
@@ -29,7 +29,7 @@ gps_lab08 - Sky plot of GPS satellite trajectories from a RINEX 3.04
             navigation file for times and satellites from a RINEX 3.04
             observation file
 
-PL:
+PL
 SPIS TREŚCI
 -----------
 
