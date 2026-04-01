@@ -1,4 +1,4 @@
--- 2025-12-27
+-- 2026-04-01
 
 {- | The program generates a sky plot of computed GPS satellite
    trajectories as an SVG file, using data from the RINEX navigation
@@ -50,8 +50,12 @@
    4. Convert the ENU vector to azimuth and elevation angles (enuToAzEl  
    function).
 
+   NOTE: The Sagnac correction is not applied because its result is
+   too small to be visible on the graph.
+
+
    Input (to modify directly in the source code):
-     - ECEF coordinates of observer position                obsECEF
+     - ECEF coordinates of observer position                obsPosECEF
      - rinex navigation file name                           navFn
      - rinex observation file name                          obsFn
      - plot title                                           title
@@ -153,7 +157,7 @@ type AzEl     = (Double, Double)           -- ^ Azimuth, elevation in degrees
 main :: IO ()
 main = do
   let
-      obsECEF = (3730927.8332,1134193.6047,5030402.1250)    -- Input: ECEF coordinates of observer position
+      obsPosECEF = (3730927.8332,1134193.6047,5030402.1250) -- Input: ECEF coordinates of observer position
       navFn = "rinex.nav"                                   -- Input: RINEX 3.04 navigation file name
       obsFn = "rinex.obs"                                   -- Input: RINEX 3.04 observation file name
   navBs <- L8.readFile navFn
@@ -171,7 +175,7 @@ main = do
       numObsNav = foldl' (\acc (_, xs) -> length xs + acc)  -- count observations matched with navigation
                           0 obsNavRs                        -- recoreds
                 
-      skyPts   = skyPoints obsECEF obsNavRs
+      skyPts   = skyPoints obsPosECEF obsNavRs
       title  = "Sky Plot of GPS Satellite \
                 \Trajectories from the " <> T.pack navFn
                 <> "\nfor Observation Times \
@@ -310,7 +314,7 @@ skyPoints
   :: ECEF
   -> [(ObsTime, [(Observation, NavRecord)])]
   -> [(Int, [([AzEl], NavRecord)])]
-skyPoints obsECEF obsnavRs =
+skyPoints obsPosECEF obsnavRs =
   [ (prn, [ (azelsForNavRecord ts r, r) | (ts, r) <- xs ])  -- reversed order
   | (prn, xs) <- obsGroupByPrn obsnavRs
   ]
@@ -320,7 +324,7 @@ skyPoints obsECEF obsnavRs =
         [ enuToAzEl enu
         | tobs <- ts
         , let wtobs = gpsTimeToWeekTow tobs
-              enu   = ecefVectorToENU (satPosECEF wtobs r) obsECEF
+              enu   = ecefVectorToENU (satPosECEF wtobs r) obsPosECEF
               (_,_,u) = enu
         , u > 0
         ]
